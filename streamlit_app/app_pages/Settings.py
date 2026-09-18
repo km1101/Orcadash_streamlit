@@ -1,4 +1,5 @@
 """Settings — cache management, session reset, and environment diagnostics."""
+import importlib.util
 import shutil
 
 import streamlit as st
@@ -6,7 +7,13 @@ import streamlit as st
 from components.cards import info_card, section_header
 from components.themes import render_ops_header
 from utils.config import EXPORT_DIR, STATE_DIR, UPLOAD_DIR
-from utils.loaders import ORCAFLEX_AVAILABLE, IMPORT_ERROR, ensure_session_state
+from utils.loaders import (
+    IMPORT_ERROR,
+    ORCAFLEX_AVAILABLE,
+    ORCAFXAPI_AVAILABLE,
+    PYTHON_EXECUTABLE,
+    ensure_session_state,
+)
 
 ensure_session_state()
 
@@ -25,8 +32,19 @@ st.markdown("#### Environment")
 if ORCAFLEX_AVAILABLE:
     st.success("OrcFxAPI detected — extractions will run against your local OrcaFlex license.")
 else:
-    st.error(f"OrcFxAPI is not available: {IMPORT_ERROR}")
-    st.caption("This page (and every analysis page) still loads, but extraction is disabled without a licensed OrcaFlex install.")
+    st.error(f"Extraction backend unavailable: {IMPORT_ERROR}")
+    st.caption(
+        "The UI still works for uploads and navigation. For extractions, run the app with "
+        "the project virtualenv (`run_app.bat` from the repo root), ensure OrcaFlex is "
+        "installed and licensed, and install Python deps into the same interpreter Streamlit uses."
+    )
+
+with st.expander("Runtime diagnostics", expanded=not ORCAFLEX_AVAILABLE):
+    st.code(PYTHON_EXECUTABLE, language="text")
+    st.write(f"OrcFxAPI module: **{'found' if ORCAFXAPI_AVAILABLE else 'missing'}**")
+    st.write(f"Backend ready: **{'yes' if ORCAFLEX_AVAILABLE else 'no'}**")
+    for pkg in ("scipy", "pandas", "plotly", "numpy"):
+        st.write(f"{pkg}: **{'ok' if importlib.util.find_spec(pkg) else 'missing'}**")
 
 st.write("")
 

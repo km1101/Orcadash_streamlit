@@ -17,43 +17,79 @@ from utils.config import BACKEND_DIR, UPLOAD_DIR
 
 sys.path.insert(0, str(BACKEND_DIR))
 
+ORCAFXAPI_AVAILABLE = False
+ORCAFLEX_AVAILABLE = False
+IMPORT_ERROR = None
+PYTHON_EXECUTABLE = sys.executable
+
+
+def _orcfxapi_setup_hint() -> str:
+    return (
+        f"Python running this app: {PYTHON_EXECUTABLE}. "
+        "OrcFxAPI ships with OrcaFlex (not PyPI). Use the project virtualenv "
+        "(run `run_app.bat` from the repo root) or install OrcFxAPI into this "
+        "interpreter from your OrcaFlex program folder (OrcFxAPI.py + OrcFxAPIConfig.py)."
+    )
+
+
+def _backend_deps_hint(missing: str) -> str:
+    return (
+        f"Missing dependency `{missing}` for {PYTHON_EXECUTABLE}. "
+        f"Install with: `{PYTHON_EXECUTABLE} -m pip install -r requirements.txt` "
+        "or start the app via `run_app.bat` / `.venv\\Scripts\\streamlit.exe`."
+    )
+
+
 try:
     import OrcFxAPI
-    from var_and_func.variables import variables_dict, Range_Graph_variable_dict
-    from var_and_func.variables import (
-        END_LOAD_CATEGORIES,
-        is_end_load_category,
-        is_end_load_variable,
-        get_variable_units,
-    )
-    from var_and_func.variable_mapping import get_variables_for_object_types
-    from var_and_func.extract_multi_objects import extract_time_history_multi_objects
-    from var_and_func.time_history import (
-        calculate_statistics_summary,
-        extract_xy_time_history_data,
-        resolve_period,
-    )
-    from var_and_func.statistics_utils import (
-        compute_histogram,
-        compute_extended_statistics_summary,
-        compute_power_spectral_density,
-    )
-    from var_and_func.frequent_variables import record_variable_usage
 
-    # Reload range_graph so Streamlit hot-reloads pick up signature changes
-    # under backend/ (outside the watched streamlit_app tree).
-    import importlib
-    import var_and_func.range_graph as _range_graph_mod
+    ORCAFXAPI_AVAILABLE = True
+except ImportError as e:
+    IMPORT_ERROR = f"{e}. {_orcfxapi_setup_hint()}"
+except Exception as e:
+    IMPORT_ERROR = f"OrcFxAPI failed to load: {e}. {_orcfxapi_setup_hint()}"
 
-    _range_graph_mod = importlib.reload(_range_graph_mod)
-    extract_range_graph_data = _range_graph_mod.extract_range_graph_data
-    extract_3D_position_data = _range_graph_mod.extract_3D_position_data
+if ORCAFXAPI_AVAILABLE:
+    try:
+        from var_and_func.variables import variables_dict, Range_Graph_variable_dict
+        from var_and_func.variables import (
+            END_LOAD_CATEGORIES,
+            is_end_load_category,
+            is_end_load_variable,
+            get_variable_units,
+        )
+        from var_and_func.variable_mapping import get_variables_for_object_types
+        from var_and_func.extract_multi_objects import extract_time_history_multi_objects
+        from var_and_func.time_history import (
+            calculate_statistics_summary,
+            extract_xy_time_history_data,
+            resolve_period,
+        )
+        from var_and_func.statistics_utils import (
+            compute_histogram,
+            compute_extended_statistics_summary,
+            compute_power_spectral_density,
+        )
+        from var_and_func.frequent_variables import record_variable_usage
 
-    ORCAFLEX_AVAILABLE = True
-    IMPORT_ERROR = None
-except Exception as e:  # OrcFxAPI not installed / no OrcaFlex license on this machine
-    ORCAFLEX_AVAILABLE = False
-    IMPORT_ERROR = str(e)
+        # Reload range_graph so Streamlit hot-reloads pick up signature changes
+        # under backend/ (outside the watched streamlit_app tree).
+        import importlib
+        import var_and_func.range_graph as _range_graph_mod
+
+        _range_graph_mod = importlib.reload(_range_graph_mod)
+        extract_range_graph_data = _range_graph_mod.extract_range_graph_data
+        extract_3D_position_data = _range_graph_mod.extract_3D_position_data
+
+        ORCAFLEX_AVAILABLE = True
+        IMPORT_ERROR = None
+    except ImportError as e:
+        name = getattr(e, "name", None) or str(e)
+        IMPORT_ERROR = _backend_deps_hint(name)
+    except Exception as e:
+        IMPORT_ERROR = f"OrcaFlex backend failed to initialize: {e}"
+
+if not ORCAFLEX_AVAILABLE:
     variables_dict, Range_Graph_variable_dict = {}, {}
     END_LOAD_CATEGORIES = ()
 
