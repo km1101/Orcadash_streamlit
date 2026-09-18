@@ -81,15 +81,18 @@ _prepare_orcaflex_windows_paths()
 
 
 def _orcfxapi_setup_hint() -> str:
-    hint = (
-        "Install OrcaFlex on this computer with a valid license and ensure OrcFxAPI "
-        f"is available to Python ({PYTHON_EXECUTABLE}). OrcFxAPI ships with OrcaFlex "
-        "(not PyPI): copy OrcFxAPI.py and OrcFxAPIConfig.py from your OrcaFlex program "
-        "folder into this interpreter's site-packages if needed."
+    if sys.platform != "win32":
+        return (
+            "OrcaFlex and OrcFxAPI require Windows, so extractions cannot run on this "
+            f"host ({PYTHON_EXECUTABLE}). Run the app on the Windows PC where OrcaFlex "
+            "is installed."
+        )
+    return (
+        "Install OrcaFlex on this computer with a valid license, then "
+        f"`{PYTHON_EXECUTABLE} -m pip install -r requirements.txt` so OrcFxAPI is "
+        "available to the interpreter running this app. Prefer starting the app with "
+        "`run_app.bat` from the repo root."
     )
-    if sys.platform == "win32":
-        hint += " On Windows, prefer starting the app with `run_app.bat` from the repo root."
-    return hint
 
 
 def _backend_deps_hint(missing: str) -> str:
@@ -109,6 +112,27 @@ def header_status_for_api() -> tuple[str, str]:
 def show_orcaflex_unavailable_banner() -> None:
     if ORCAFLEX_AVAILABLE:
         return
+
+    if sys.platform != "win32":
+        where = (
+            "**Streamlit Community Cloud**"
+            if _is_streamlit_community_cloud()
+            else "a **Linux/macOS host**"
+        )
+        st.warning(
+            f"This copy of the app is hosted on {where}, where **OrcaFlex** cannot run — "
+            "it is Windows-only and needs a local license, so a remote server cannot reach "
+            "the OrcaFlex install on your own PC. Uploads and the UI work here, but "
+            "**Generate Results** and extractions are disabled."
+        )
+        st.caption(
+            "To run extractions, start the app on your Windows PC with `run_app.bat` "
+            "(or `.venv\\Scripts\\streamlit.exe run streamlit_app\\app.py`) and open "
+            "http://localhost:8501."
+        )
+        st.caption(f"Host Python: `{PYTHON_EXECUTABLE}`")
+        return
+
     st.warning(
         "OrcFxAPI is not available. Install **OrcaFlex** on this machine with a valid "
         "**license** and ensure **OrcFxAPI** is installed for the Python running this app. "
@@ -116,17 +140,10 @@ def show_orcaflex_unavailable_banner() -> None:
         "stay disabled until OrcaFlex and OrcFxAPI are set up."
     )
     st.caption(f"Python running this app: `{PYTHON_EXECUTABLE}`")
-    if _is_streamlit_community_cloud():
-        st.caption(
-            "This URL is **Streamlit Community Cloud** (Linux). OrcFxAPI cannot run there — "
-            "open the app on **your PC** with `run_app.bat` or "
-            "`.venv\\Scripts\\streamlit.exe run streamlit_app\\app.py` after `pip install -r requirements.txt`."
-        )
-    elif sys.platform == "win32":
-        st.caption(
-            "On Windows, start the app with **`run_app.bat`** from the repo root so Streamlit "
-            "uses the same Python as your OrcaFlex/OrcFxAPI install."
-        )
+    st.caption(
+        "Start the app with **`run_app.bat`** from the repo root so Streamlit uses the "
+        "same Python as your OrcaFlex/OrcFxAPI install."
+    )
     if IMPORT_ERROR:
         st.caption(IMPORT_ERROR)
 
