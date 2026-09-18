@@ -12,7 +12,7 @@ from components.filters import file_selector, object_selector, variable_selector
 from components.tables import download_button_for_df, styled_dataframe
 from utils.loaders import (
     ORCAFLEX_AVAILABLE,
-    IMPORT_ERROR,
+    show_orcaflex_unavailable_banner,
     calculate_statistics_summary,
     compute_extended_statistics_summary,
     ensure_session_state,
@@ -25,7 +25,7 @@ ensure_session_state()
 section_header("Statistics", "Descriptive and distribution-shape statistics for the active dataset.", icon="📋")
 
 if not ORCAFLEX_AVAILABLE:
-    st.error(f"OrcFxAPI is not available in this environment ({IMPORT_ERROR}).")
+    show_orcaflex_unavailable_banner()
     st.stop()
 
 state = st.session_state.get("last_extracted", {})

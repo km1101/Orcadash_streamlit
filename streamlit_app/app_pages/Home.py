@@ -26,8 +26,9 @@ from components.themes import render_ops_header, render_timeline, viz_placeholde
 from utils.cache import get_cached_model_summary
 from utils.config import DEFAULT_PERIOD, OBJECT_CATALOG_ORDER, OBJECT_TYPE_ICONS, PERIOD_OPTIONS
 from utils.loaders import (
-    IMPORT_ERROR,
     ORCAFLEX_AVAILABLE,
+    header_status_for_api,
+    show_orcaflex_unavailable_banner,
     END_LOAD_CATEGORIES,
     Range_Graph_variable_dict,
     ensure_session_state,
@@ -244,6 +245,7 @@ def _variable_options(var_source, category, raw_types):
 loaded = st.session_state.get("loaded_files", {})
 selected_keys = list(st.session_state.get("dash_selected_keys", []))
 api_ok = ORCAFLEX_AVAILABLE
+_status_text, _status_kind = header_status_for_api()
 
 render_ops_header(
     meta={
@@ -251,15 +253,12 @@ render_ops_header(
         "Selected": str(len(selected_keys)),
         "Extractions": str(st.session_state.get("extraction_count", 0)),
     },
-    status_text="OrcFxAPI OK" if api_ok else "API OFFLINE",
-    status_kind="ok" if api_ok else "warn",
+    status_text=_status_text,
+    status_kind=_status_kind,
 )
 
 if not api_ok:
-    st.warning(
-        f"OrcFxAPI is not available ({IMPORT_ERROR}). You can still upload files and browse the UI; "
-        "result generation stays disabled until OrcaFlex is installed and licensed."
-    )
+    show_orcaflex_unavailable_banner()
 
 # ===========================================================================
 # STEP 1 — Select .sim File(s)

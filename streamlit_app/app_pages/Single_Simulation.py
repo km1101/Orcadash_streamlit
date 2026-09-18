@@ -23,7 +23,7 @@ from components.filters import file_selector, object_selector, period_selector, 
 from components.tables import download_button_for_df, styled_dataframe
 from utils.loaders import (
     ORCAFLEX_AVAILABLE,
-    IMPORT_ERROR,
+    show_orcaflex_unavailable_banner,
     calculate_statistics_summary,
     compute_extended_statistics_summary,
     ensure_session_state,
@@ -41,7 +41,7 @@ ensure_session_state()
 section_header("Single Simulation", "Time history, statistics, and spectral analysis for one model.", icon="📈")
 
 if not ORCAFLEX_AVAILABLE:
-    st.error(f"OrcFxAPI is not available in this environment ({IMPORT_ERROR}). Run this app on a machine with OrcaFlex installed and licensed.")
+    show_orcaflex_unavailable_banner()
     st.stop()
 
 st.sidebar.markdown("### Filters")

@@ -8,7 +8,7 @@ from components.tables import download_button_for_df, styled_dataframe
 from utils.cache import get_cached_model_summary
 from utils.loaders import (
     ORCAFLEX_AVAILABLE,
-    IMPORT_ERROR,
+    show_orcaflex_unavailable_banner,
     calculate_statistics_summary,
     ensure_session_state,
     extract_time_history_multi_objects,
@@ -23,7 +23,7 @@ ensure_session_state()
 section_header("Multiple Simulations", "Compare one variable side-by-side across several loaded files.", icon="📊")
 
 if not ORCAFLEX_AVAILABLE:
-    st.error(f"OrcFxAPI is not available in this environment ({IMPORT_ERROR}).")
+    show_orcaflex_unavailable_banner()
     st.stop()
 
 loaded = st.session_state.get("loaded_files", {})

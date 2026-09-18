@@ -12,6 +12,8 @@ from utils.loaders import (
     ORCAFLEX_AVAILABLE,
     ORCAFXAPI_AVAILABLE,
     PYTHON_EXECUTABLE,
+    availability_user_message,
+    is_streamlit_community_cloud,
     ensure_session_state,
 )
 
@@ -31,6 +33,8 @@ section_header("Settings", "Cache, session state, and environment diagnostics.",
 st.markdown("#### Environment")
 if ORCAFLEX_AVAILABLE:
     st.success("OrcFxAPI detected — extractions will run against your local OrcaFlex license.")
+elif is_streamlit_community_cloud():
+    st.info(availability_user_message())
 else:
     st.error(f"Extraction backend unavailable: {IMPORT_ERROR}")
     st.caption(

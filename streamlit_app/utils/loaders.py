@@ -22,22 +22,83 @@ ORCAFLEX_AVAILABLE = False
 IMPORT_ERROR = None
 PYTHON_EXECUTABLE = sys.executable
 
+GITHUB_REPO = "https://github.com/km1101/Orcadash_streamlit"
+
+
+def is_streamlit_community_cloud() -> bool:
+    """True on Streamlit Community Cloud (Linux, no OrcaFlex)."""
+    exe = Path(sys.executable).as_posix()
+    if "/home/adminuser/venv/" in exe:
+        return True
+    flag = os.environ.get("ORCADASH_PUBLIC_DEMO", "").strip().lower()
+    return flag in ("1", "true", "yes", "on")
+
+
+IS_PUBLIC_DEMO = False  # set after bootstrap below
+
 
 def _orcfxapi_setup_hint() -> str:
+    if is_streamlit_community_cloud():
+        return (
+            "This deployment is a public UI demo. OrcFxAPI cannot run on Streamlit Community Cloud; "
+            f"clone {GITHUB_REPO} and run locally with OrcaFlex installed."
+        )
+    if sys.platform == "win32":
+        return (
+            f"Python: {PYTHON_EXECUTABLE}. OrcFxAPI ships with OrcaFlex (not PyPI). "
+            "Run `run_app.bat` from the repo root, or copy OrcFxAPI.py and OrcFxAPIConfig.py "
+            "from your OrcaFlex folder into this Python's site-packages."
+        )
     return (
-        f"Python running this app: {PYTHON_EXECUTABLE}. "
-        "OrcFxAPI ships with OrcaFlex (not PyPI). Use the project virtualenv "
-        "(run `run_app.bat` from the repo root) or install OrcFxAPI into this "
-        "interpreter from your OrcaFlex program folder (OrcFxAPI.py + OrcFxAPIConfig.py)."
+        f"Python: {PYTHON_EXECUTABLE}. Install OrcFxAPI from your OrcaFlex installation and "
+        f"`{PYTHON_EXECUTABLE} -m pip install -r requirements.txt`."
     )
 
 
 def _backend_deps_hint(missing: str) -> str:
+    if is_streamlit_community_cloud():
+        return f"Missing `{missing}` on hosted demo (extractions require a local OrcaFlex run)."
     return (
         f"Missing dependency `{missing}` for {PYTHON_EXECUTABLE}. "
         f"Install with: `{PYTHON_EXECUTABLE} -m pip install -r requirements.txt` "
         "or start the app via `run_app.bat` / `.venv\\Scripts\\streamlit.exe`."
     )
+
+
+def availability_user_message() -> str:
+    if ORCAFLEX_AVAILABLE:
+        return ""
+    if is_streamlit_community_cloud():
+        return (
+            "**Public demo mode** — [orcadash.streamlit.app](https://orcadash.streamlit.app/) runs on "
+            "Streamlit Community Cloud, which cannot host OrcFxAPI or a licensed OrcaFlex engine. "
+            "You can upload `.sim` files and explore the workflow here; **Generate Results** and all "
+            "extractions require running the app on **your own PC** with OrcaFlex installed. "
+            f"Get the code from [{GITHUB_REPO}]({GITHUB_REPO}) and start with `run_app.bat` (Windows) "
+            "or `.venv/bin/streamlit run streamlit_app/app.py` after `pip install -r requirements.txt`."
+        )
+    return (
+        f"OrcFxAPI is not available ({IMPORT_ERROR}). You can still upload files and browse the UI; "
+        "result generation stays disabled until OrcaFlex is installed and licensed on this computer."
+    )
+
+
+def header_status_for_api() -> tuple[str, str]:
+    if ORCAFLEX_AVAILABLE:
+        return "OrcFxAPI OK", "ok"
+    if is_streamlit_community_cloud():
+        return "DEMO MODE", "warn"
+    return "API OFFLINE", "warn"
+
+
+def show_orcaflex_unavailable_banner() -> None:
+    if ORCAFLEX_AVAILABLE:
+        return
+    msg = availability_user_message()
+    if is_streamlit_community_cloud():
+        st.info(msg)
+    else:
+        st.warning(msg)
 
 
 try:
@@ -88,6 +149,8 @@ if ORCAFXAPI_AVAILABLE:
         IMPORT_ERROR = _backend_deps_hint(name)
     except Exception as e:
         IMPORT_ERROR = f"OrcaFlex backend failed to initialize: {e}"
+
+IS_PUBLIC_DEMO = is_streamlit_community_cloud() and not ORCAFLEX_AVAILABLE
 
 if not ORCAFLEX_AVAILABLE:
     variables_dict, Range_Graph_variable_dict = {}, {}
