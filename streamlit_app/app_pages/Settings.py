@@ -10,7 +10,9 @@ from utils.config import EXPORT_DIR, STATE_DIR, UPLOAD_DIR
 from utils.loaders import (
     IMPORT_ERROR,
     ORCAFLEX_AVAILABLE,
+    ORCAFLEX_DLL_PATH,
     ORCAFLEX_DLL_VERSION,
+    ORCAFLEX_INSTALLS,
     ORCAFXAPI_AVAILABLE,
     PYTHON_EXECUTABLE,
     ensure_session_state,
@@ -48,6 +50,28 @@ with st.expander("Runtime diagnostics", expanded=not ORCAFLEX_AVAILABLE):
         st.error(IMPORT_ERROR)
     for pkg in ("scipy", "pandas", "plotly", "numpy"):
         st.write(f"{pkg}: **{'ok' if importlib.util.find_spec(pkg) else 'missing'}**")
+
+    if ORCAFLEX_INSTALLS:
+        st.write("")
+        st.write("**OrcaFlex installs found on this machine**")
+        st.dataframe(
+            [
+                {
+                    "Version": i["version"],
+                    "Edition": i["edition"],
+                    "Licensed": "yes" if i.get("licensed") else "no",
+                    "In use": "✓" if i["dll_path"] == ORCAFLEX_DLL_PATH else "",
+                    "DLL": i["dll_path"],
+                }
+                for i in ORCAFLEX_INSTALLS
+            ],
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.caption(
+            "The newest licensed version is used automatically. Set the "
+            "`ORCAFLEX_DLL_PATH` environment variable to force a specific OrcFxAPI.dll."
+        )
     if st.button("Test OrcFxAPI / OrcaFlex DLL", type="primary"):
         ok, detail = verify_orcaflex_runtime()
         if ok:

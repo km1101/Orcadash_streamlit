@@ -6,6 +6,7 @@ This is the single place that adds ``backend/`` to ``sys.path`` and imports
 the extraction package, so every page and component gets the same modules
 (and the same availability flag) without repeating the import dance.
 """
+import ctypes
 import os
 import sys
 from pathlib import Path
@@ -21,63 +22,223 @@ ORCAFXAPI_AVAILABLE = False
 ORCAFLEX_AVAILABLE = False
 IMPORT_ERROR = None
 ORCAFLEX_DLL_VERSION = None
+ORCAFLEX_DLL_PATH = None
+ORCAFLEX_INSTALLS = []
 PYTHON_EXECUTABLE = sys.executable
+
+_WIN_PLATFORM = "Win64" if ctypes.sizeof(ctypes.c_void_p) == 8 else "Win32"
+_SEARCH_ROOTS = (
+    r"C:\Program Files (x86)\Orcina\OrcaFlex",
+    r"C:\Program Files\Orcina\OrcaFlex",
+)
 
 
 def _is_streamlit_community_cloud() -> bool:
     return "/home/adminuser/venv/" in Path(PYTHON_EXECUTABLE).as_posix()
 
 
-def _prepare_orcaflex_windows_paths() -> None:
-    """Help OrcFxAPIConfig find OrcFxAPI.dll (registry + PATH)."""
-    if sys.platform != "win32":
+def _version_sort_key(install: dict) -> tuple:
+    """Newest full install first; Demo and unnumbered installs last."""
+    parts = [
+        int(chunk) for chunk in str(install["version"]).split(".") if chunk.isdigit()
+    ]
+    return (
+        0 if install["edition"] == "Normal" else 1,
+        0 if parts else 1,
+        [-p for p in parts],
+    )
+
+
+def _add_install(installs: dict, version: str, edition: str, install_dir: str) -> None:
+    if not install_dir:
         return
+    install_dir = os.path.normpath(install_dir)
+    dll_path = os.path.join(install_dir, "OrcFxAPI", _WIN_PLATFORM, "OrcFxAPI.dll")
+    if not os.path.isfile(dll_path) or dll_path.lower() in installs:
+        return
+    installs[dll_path.lower()] = {
+        "version": version,
+        "edition": edition,
+        "install_dir": install_dir,
+        "dll_path": dll_path,
+    }
+
+
+def _registry_installs(installs: dict) -> None:
     try:
         import winreg
     except ImportError:
         return
 
-    install_dir = None
-    for hive, flags in (
-        (winreg.HKEY_LOCAL_MACHINE, winreg.KEY_READ | winreg.KEY_WOW64_32KEY),
-        (winreg.HKEY_LOCAL_MACHINE, winreg.KEY_READ),
-    ):
+    views = (winreg.KEY_WOW64_32KEY, winreg.KEY_WOW64_64KEY)
+    for view in views:
         try:
-            with winreg.OpenKey(
-                hive,
-                r"Software\Orcina\OrcaFlex\Installation Directory",
+            root = winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"Software\Orcina\OrcaFlex",
                 0,
-                flags,
-            ) as key:
-                install_dir = winreg.QueryValueEx(key, "Normal")[0]
-                break
+                winreg.KEY_READ | view,
+            )
         except OSError:
             continue
 
-    if not install_dir or not os.path.isdir(install_dir):
+        with root:
+            # Versioned keys first so installs keep their real version label; the
+            # unversioned key is the same install under a generic name.
+            subkeys = []
+            index = 0
+            while True:
+                try:
+                    name = winreg.EnumKey(root, index)
+                except OSError:
+                    break
+                index += 1
+                if name != "Installation Directory":
+                    subkeys.append(f"{name}\\Installation Directory")
+            subkeys.append("Installation Directory")
+
+            for subkey in subkeys:
+                version = subkey.split("\\")[0]
+                if version == "Installation Directory":
+                    version = "unknown"
+                try:
+                    key = winreg.OpenKey(root, subkey, 0, winreg.KEY_READ | view)
+                except OSError:
+                    continue
+                with key:
+                    for edition in ("Normal", "Demo"):
+                        try:
+                            path = winreg.QueryValueEx(key, edition)[0]
+                        except OSError:
+                            continue
+                        _add_install(installs, version, edition, path)
+
+
+def _filesystem_installs(installs: dict) -> None:
+    for root in _SEARCH_ROOTS:
+        if not os.path.isdir(root):
+            continue
+        for entry in sorted(os.listdir(root)):
+            path = os.path.join(root, entry)
+            if os.path.isdir(path):
+                edition = "Demo" if entry.lower() == "demo" else "Normal"
+                _add_install(installs, entry, edition, path)
+
+
+def discover_orcaflex_installs() -> list:
+    """All OrcaFlex installs on this machine, newest licensed version first."""
+    if sys.platform != "win32":
+        return []
+    installs: dict = {}
+    _registry_installs(installs)
+    _filesystem_installs(installs)
+    return sorted(installs.values(), key=_version_sort_key)
+
+
+def _register_dll_dir(dll_path: str) -> None:
+    dll_dir = os.path.dirname(dll_path)
+    if hasattr(os, "add_dll_directory") and os.path.isdir(dll_dir):
+        try:
+            os.add_dll_directory(dll_dir)
+        except OSError:
+            pass
+    os.environ["PATH"] = dll_dir + os.pathsep + os.environ.get("PATH", "")
+
+
+# Creates and destroys a bare model through the raw C API, which is the cheapest
+# way to find out whether a given install can actually claim a licence.
+_LICENCE_PROBE = r"""
+import ctypes, sys
+
+class Params(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [("Size", ctypes.c_int), ("ThreadCount", ctypes.c_int)]
+
+lib = ctypes.WinDLL(sys.argv[1])
+handle = ctypes.c_void_p()
+status = ctypes.c_int(0)
+params = Params()
+params.Size = ctypes.sizeof(params)
+params.ThreadCount = 1
+if hasattr(lib, "C_CreateModel2"):
+    lib.C_CreateModel2(ctypes.byref(handle), ctypes.byref(params), ctypes.byref(status))
+else:
+    lib.C_CreateModel(ctypes.byref(handle), ctypes.byref(status))
+if status.value == 0:
+    lib.C_DestroyModel(handle, ctypes.byref(status))
+sys.exit(0 if status.value == 0 else 1)
+"""
+
+
+def _licence_available(dll_path: str) -> bool:
+    """Probe a licence in a throwaway process.
+
+    Loading several OrcaFlex versions into one process is unsupported, and an
+    unlicensed version prints its own dialogs/errors, so the probe is isolated.
+    """
+    import subprocess
+
+    try:
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        result = subprocess.run(
+            [sys.executable, "-c", _LICENCE_PROBE, dll_path],
+            capture_output=True,
+            timeout=60,
+            creationflags=creationflags,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _activate_orcaflex_install() -> None:
+    """Pick a licensed OrcFxAPI.dll before OrcFxAPI is imported.
+
+    OrcFxAPI binds its DLL at import time, so the choice has to be made here:
+    walk the installed versions newest-first and keep the first one whose
+    licence actually grants a model, falling back to the newest that loads.
+    """
+    global ORCAFLEX_INSTALLS, ORCAFLEX_DLL_PATH
+    if sys.platform != "win32":
         return
 
-    install_dir = os.path.normpath(install_dir)
-    for extra in (
-        install_dir,
-        os.path.join(install_dir, "Python"),
-        os.path.join(install_dir, "Python API"),
-    ):
-        if os.path.isdir(extra) and extra not in sys.path:
-            sys.path.insert(0, extra)
+    ORCAFLEX_INSTALLS = discover_orcaflex_installs()
 
-    platform = "Win64" if ctypes.sizeof(ctypes.c_void_p) == 8 else "Win32"
-    dll_dir = os.path.join(install_dir, "OrcFxAPI", platform)
-    if os.path.isdir(dll_dir):
-        os.environ["PATH"] = dll_dir + os.pathsep + os.environ.get("PATH", "")
-        if hasattr(os, "add_dll_directory"):
-            os.add_dll_directory(dll_dir)
+    override = os.environ.get("ORCAFLEX_DLL_PATH") or os.environ.get("_OrcFxAPIlib")
+    candidates = list(ORCAFLEX_INSTALLS)
+    if override and os.path.isfile(override):
+        candidates.insert(
+            0,
+            {
+                "version": "override",
+                "edition": "Normal",
+                "install_dir": os.path.dirname(override),
+                "dll_path": override,
+            },
+        )
+
+    chosen = None
+    for install in candidates:
+        install["licensed"] = _licence_available(install["dll_path"])
+        if install["licensed"] and chosen is None:
+            chosen = install
+
+    if chosen is None and candidates:
+        chosen = candidates[0]
+    if chosen is None:
+        return
+
+    _register_dll_dir(chosen["dll_path"])
+    try:
+        import OrcFxAPIConfig
+
+        OrcFxAPIConfig.setLibPath(chosen["dll_path"], childProcessInherit=True)
+    except ImportError:
+        os.environ["_OrcFxAPIlib"] = chosen["dll_path"]
+    ORCAFLEX_DLL_PATH = chosen["dll_path"]
 
 
-# ctypes used only for pointer size / DLL directory on Windows
-import ctypes  # noqa: E402
-
-_prepare_orcaflex_windows_paths()
+_activate_orcaflex_install()
 
 
 def _orcfxapi_setup_hint() -> str:
@@ -149,15 +310,15 @@ def show_orcaflex_unavailable_banner() -> None:
 
 
 def verify_orcaflex_runtime() -> tuple[bool, str]:
-    """Lightweight OrcFxAPI/DLL check (Settings diagnostics)."""
+    """Check the DLL loads *and* the license grants a working model."""
     if not ORCAFLEX_AVAILABLE:
         return False, IMPORT_ERROR or "Backend not initialized."
     try:
         version = OrcFxAPI.DLLVersion()
-        location = OrcFxAPI.DLLLocation()
-        return True, f"OrcFxAPI {version} — {location}"
+        OrcFxAPI.Model()
+        return True, f"OrcaFlex {version} licensed and ready — {ORCAFLEX_DLL_PATH}"
     except Exception as e:
-        return False, str(e)
+        return False, f"OrcaFlex {ORCAFLEX_DLL_PATH} failed the license check: {e}"
 
 
 try:
