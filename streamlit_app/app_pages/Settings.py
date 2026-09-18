@@ -8,13 +8,11 @@ from components.cards import info_card, section_header
 from components.themes import render_ops_header
 from utils.config import EXPORT_DIR, STATE_DIR, UPLOAD_DIR
 from utils.loaders import (
-    IMPORT_ERROR,
     ORCAFLEX_AVAILABLE,
     ORCAFXAPI_AVAILABLE,
     PYTHON_EXECUTABLE,
-    availability_user_message,
-    is_streamlit_community_cloud,
     ensure_session_state,
+    show_orcaflex_unavailable_banner,
 )
 
 ensure_session_state()
@@ -33,15 +31,8 @@ section_header("Settings", "Cache, session state, and environment diagnostics.",
 st.markdown("#### Environment")
 if ORCAFLEX_AVAILABLE:
     st.success("OrcFxAPI detected — extractions will run against your local OrcaFlex license.")
-elif is_streamlit_community_cloud():
-    st.info(availability_user_message())
 else:
-    st.error(f"Extraction backend unavailable: {IMPORT_ERROR}")
-    st.caption(
-        "The UI still works for uploads and navigation. For extractions, run the app with "
-        "the project virtualenv (`run_app.bat` from the repo root), ensure OrcaFlex is "
-        "installed and licensed, and install Python deps into the same interpreter Streamlit uses."
-    )
+    show_orcaflex_unavailable_banner()
 
 with st.expander("Runtime diagnostics", expanded=not ORCAFLEX_AVAILABLE):
     st.code(PYTHON_EXECUTABLE, language="text")

@@ -8,7 +8,7 @@ collapse toggle and CSS width tricks so the left rail matches the wireframe
 import streamlit as st
 
 from utils.config import APP_NAME, APP_TAGLINE, BRAND_SHORT, LOGO_PATH
-from utils.loaders import ORCAFLEX_AVAILABLE, is_streamlit_community_cloud
+from utils.loaders import ORCAFLEX_AVAILABLE
 
 _COLLAPSE_KEY = "sidebar_collapsed"
 
@@ -115,12 +115,7 @@ def render_sidebar_footer():
     collapsed = is_sidebar_collapsed()
     loaded = st.session_state.get("loaded_files", {})
     selected = st.session_state.get("dash_selected_keys", [])
-    if ORCAFLEX_AVAILABLE:
-        api_label = "OrcFxAPI ready"
-    elif is_streamlit_community_cloud():
-        api_label = "Public demo"
-    else:
-        api_label = "OrcFxAPI offline"
+    api_label = "OrcFxAPI ready" if ORCAFLEX_AVAILABLE else "OrcFxAPI offline"
 
     with st.sidebar:
         st.markdown("---")

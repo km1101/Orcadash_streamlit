@@ -22,11 +22,7 @@ run_app.bat
 
 If you see **“No module named 'OrcFxAPI'”**, Streamlit is usually running under the wrong Python. Close it and start via `run_app.bat`, or copy `OrcFxAPI.py` and `OrcFxAPIConfig.py` from your OrcaFlex install into that Python’s `site-packages`.
 
-Requires a machine with **OrcaFlex installed and licensed** (`OrcFxAPI`). Without it, the UI still loads; extractions are disabled and **Settings** shows API status.
-
-## Streamlit Community Cloud
-
-This app is **not** a fit for public Streamlit Cloud hosting: OrcFxAPI is proprietary and must be installed locally with a license. Use the steps above on a workstation that has OrcaFlex.
+Requires a machine with **OrcaFlex installed and licensed** (`OrcFxAPI`). Without it, the UI still loads; extractions are disabled and the app shows a setup banner.
 
 ## Documentation
 
