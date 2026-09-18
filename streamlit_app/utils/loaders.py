@@ -20,7 +20,64 @@ sys.path.insert(0, str(BACKEND_DIR))
 ORCAFXAPI_AVAILABLE = False
 ORCAFLEX_AVAILABLE = False
 IMPORT_ERROR = None
+ORCAFLEX_DLL_VERSION = None
 PYTHON_EXECUTABLE = sys.executable
+
+
+def _is_streamlit_community_cloud() -> bool:
+    return "/home/adminuser/venv/" in Path(PYTHON_EXECUTABLE).as_posix()
+
+
+def _prepare_orcaflex_windows_paths() -> None:
+    """Help OrcFxAPIConfig find OrcFxAPI.dll (registry + PATH)."""
+    if sys.platform != "win32":
+        return
+    try:
+        import winreg
+    except ImportError:
+        return
+
+    install_dir = None
+    for hive, flags in (
+        (winreg.HKEY_LOCAL_MACHINE, winreg.KEY_READ | winreg.KEY_WOW64_32KEY),
+        (winreg.HKEY_LOCAL_MACHINE, winreg.KEY_READ),
+    ):
+        try:
+            with winreg.OpenKey(
+                hive,
+                r"Software\Orcina\OrcaFlex\Installation Directory",
+                0,
+                flags,
+            ) as key:
+                install_dir = winreg.QueryValueEx(key, "Normal")[0]
+                break
+        except OSError:
+            continue
+
+    if not install_dir or not os.path.isdir(install_dir):
+        return
+
+    install_dir = os.path.normpath(install_dir)
+    for extra in (
+        install_dir,
+        os.path.join(install_dir, "Python"),
+        os.path.join(install_dir, "Python API"),
+    ):
+        if os.path.isdir(extra) and extra not in sys.path:
+            sys.path.insert(0, extra)
+
+    platform = "Win64" if ctypes.sizeof(ctypes.c_void_p) == 8 else "Win32"
+    dll_dir = os.path.join(install_dir, "OrcFxAPI", platform)
+    if os.path.isdir(dll_dir):
+        os.environ["PATH"] = dll_dir + os.pathsep + os.environ.get("PATH", "")
+        if hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(dll_dir)
+
+
+# ctypes used only for pointer size / DLL directory on Windows
+import ctypes  # noqa: E402
+
+_prepare_orcaflex_windows_paths()
 
 
 def _orcfxapi_setup_hint() -> str:
@@ -58,8 +115,32 @@ def show_orcaflex_unavailable_banner() -> None:
         "You can still upload files and browse the UI; **Generate Results** and extractions "
         "stay disabled until OrcaFlex and OrcFxAPI are set up."
     )
+    st.caption(f"Python running this app: `{PYTHON_EXECUTABLE}`")
+    if _is_streamlit_community_cloud():
+        st.caption(
+            "This URL is **Streamlit Community Cloud** (Linux). OrcFxAPI cannot run there — "
+            "open the app on **your PC** with `run_app.bat` or "
+            "`.venv\\Scripts\\streamlit.exe run streamlit_app\\app.py` after `pip install -r requirements.txt`."
+        )
+    elif sys.platform == "win32":
+        st.caption(
+            "On Windows, start the app with **`run_app.bat`** from the repo root so Streamlit "
+            "uses the same Python as your OrcaFlex/OrcFxAPI install."
+        )
     if IMPORT_ERROR:
         st.caption(IMPORT_ERROR)
+
+
+def verify_orcaflex_runtime() -> tuple[bool, str]:
+    """Lightweight OrcFxAPI/DLL check (Settings diagnostics)."""
+    if not ORCAFLEX_AVAILABLE:
+        return False, IMPORT_ERROR or "Backend not initialized."
+    try:
+        version = OrcFxAPI.DLLVersion()
+        location = OrcFxAPI.DLLLocation()
+        return True, f"OrcFxAPI {version} — {location}"
+    except Exception as e:
+        return False, str(e)
 
 
 try:
@@ -102,6 +183,13 @@ if ORCAFXAPI_AVAILABLE:
         _range_graph_mod = importlib.reload(_range_graph_mod)
         extract_range_graph_data = _range_graph_mod.extract_range_graph_data
         extract_3D_position_data = _range_graph_mod.extract_3D_position_data
+
+        try:
+            ORCAFLEX_DLL_VERSION = OrcFxAPI.DLLVersion()
+        except Exception as e:
+            raise RuntimeError(
+                f"OrcFxAPI imported but OrcaFlex DLL/license check failed: {e}"
+            ) from e
 
         ORCAFLEX_AVAILABLE = True
         IMPORT_ERROR = None

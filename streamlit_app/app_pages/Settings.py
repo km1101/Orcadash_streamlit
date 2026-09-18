@@ -8,11 +8,14 @@ from components.cards import info_card, section_header
 from components.themes import render_ops_header
 from utils.config import EXPORT_DIR, STATE_DIR, UPLOAD_DIR
 from utils.loaders import (
+    IMPORT_ERROR,
     ORCAFLEX_AVAILABLE,
+    ORCAFLEX_DLL_VERSION,
     ORCAFXAPI_AVAILABLE,
     PYTHON_EXECUTABLE,
     ensure_session_state,
     show_orcaflex_unavailable_banner,
+    verify_orcaflex_runtime,
 )
 
 ensure_session_state()
@@ -30,7 +33,10 @@ section_header("Settings", "Cache, session state, and environment diagnostics.",
 # --- Environment status -----------------------------------------------------
 st.markdown("#### Environment")
 if ORCAFLEX_AVAILABLE:
-    st.success("OrcFxAPI detected — extractions will run against your local OrcaFlex license.")
+    st.success(
+        f"OrcFxAPI detected ({ORCAFLEX_DLL_VERSION or 'version unknown'}) — "
+        "extractions will run against your local OrcaFlex license."
+    )
 else:
     show_orcaflex_unavailable_banner()
 
@@ -38,8 +44,16 @@ with st.expander("Runtime diagnostics", expanded=not ORCAFLEX_AVAILABLE):
     st.code(PYTHON_EXECUTABLE, language="text")
     st.write(f"OrcFxAPI module: **{'found' if ORCAFXAPI_AVAILABLE else 'missing'}**")
     st.write(f"Backend ready: **{'yes' if ORCAFLEX_AVAILABLE else 'no'}**")
+    if IMPORT_ERROR:
+        st.error(IMPORT_ERROR)
     for pkg in ("scipy", "pandas", "plotly", "numpy"):
         st.write(f"{pkg}: **{'ok' if importlib.util.find_spec(pkg) else 'missing'}**")
+    if st.button("Test OrcFxAPI / OrcaFlex DLL", type="primary"):
+        ok, detail = verify_orcaflex_runtime()
+        if ok:
+            st.success(detail)
+        else:
+            st.error(detail)
 
 st.write("")
 
